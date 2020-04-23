@@ -1,9 +1,20 @@
 #code from: https://web3py.readthedocs.io/en/stable/contracts.html#contracts
 
+#Step1: A creates her public and secret keys for each coin, sends public
+#Step2: B accepts contracts, does the same thing
+#Step3: A creates multisig wallet with each public key being in control and sends address to B
+#Step4: A creates tx1 = Refund(A, pkAa) tx2 = Swap(A, pkAb)
+#Step5: B verifies and finds (sig1, tx1) where sig1 = Sign(skAb(tx1)) and sends that plus makes the contract
+#Step6: A verifies and sends funds to M
+#Step7: B signs the multisig transaction giving him control of the funds in M
+#Step8: A signs the transaction giving B control of the funds in M, must verify to correct signature
+#Step9: B extracts funds from M (before or after time = T)
+#Step10: A uses
 
 import json
 
 from web3 import Web3
+
 from solc import compile_standard
 
 # Solidity source code
@@ -12,24 +23,29 @@ compiled_sol = compile_standard({
      "sources": {
          "swapEthToLtc.sol": {
              "content": '''
-                 pragma solidity ^0.5.0;
+                 pragma solidity ^0.6.6;
 
                  contract swapEthToLtc{
 
                  string public greeting;
 
+                 address ltcSender;
+                 address ltcReceiver;
 
                  struct Exchange {
 
                    uint256 tradeValue;
+                   uint256 ltcValue;
+
                    address ethSender;
                    address ethReceiver;
-                   address ethContractAddress;
-                   address ltcSender;
-                   address ltcReceiver;
-                   string private secret;
-                   string public expiration1;
-                   string public expiration2;
+
+
+
+                   address ltcMultiSigAddr;
+
+
+
                    }
 
                    enum States {
@@ -43,6 +59,7 @@ compiled_sol = compile_standard({
                  mapping (bytes32 => States) private exchangeStates;
 
                  event ContractOpen(bytes32 _swapID, address _otherTrader);
+                 event BSignSent(bytes32 _swapID);
                  event ContractExpire(bytes32 _swapID);
                  event ContractClose(bytes32 _swapID);
 
@@ -50,16 +67,41 @@ compiled_sol = compile_standard({
                        greeting = 'Hello';
                    }
 
-                 function setGreeting(string memory _greeting) public {
-                       greeting = _greeting;
-                   }
+                 modifier onlyInvalidExchanges(bytes32 _swapID) {
+                    require (exchangeStates[_swapID] == States.INVALID);
+                    _;
+                 }
 
-                 function greet() view public returns (string memory) {
-                       return greeting;
-                   }
+                 modifier onlyOpenExchanges(bytes32 _swapID) {
+                    require (exchangeStates[_swapID] == States.OPEN);
+                    _;
+                 }
+
+                 function open(bytes32 _swapID, uint256 _ltcValue, address _ethReceiver, address _ltcMultiSigAddr) public onlyInvalidExchanges(_swapID) payable {
+                    // Store the details of the swap.
+                    Exchange memory exchange = Exchange({
+                      tradeValue: msg.value,
+                      ltcValue: _ltcValue,
+
+                      ethSender: msg.sender,
+                      ethReceiver: _ethReceiver,
 
 
 
+                      ltcMultiSigAddr: _ltcMultiSigAddr
+                    });
+                    exchanges[_swapID] = exchange;
+                    exchangeStates[_swapID] = States.OPEN;
+
+                    emit ContractOpen(_swapID, _ethReceiver);
+                  }
+
+
+                  function verify(address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public view returns(bool)  {
+
+                        bytes32 check = keccak256(abi.encodePacked(message));
+                        return ((ecrecover(hash, v, r, s) == p) && (check == hash)) ;
+                    }
 
                  }
                '''
@@ -85,10 +127,10 @@ w3 = Web3(Web3.EthereumTesterProvider())
 w3.eth.defaultAccount = w3.eth.accounts[0]
 
 # get bytecode
-bytecode = compiled_sol['contracts']['XChainSwap.sol']['XChainSwap']['evm']['bytecode']['object']
+bytecode = compiled_sol['contracts']['swapEthToLtc.sol']['swapEthToLtc']['evm']['bytecode']['object']
 
 # get abi
-abi = json.loads(compiled_sol['contracts']['XChainSwap.sol']['XChainSwap']['metadata'])['output']['abi']
+abi = json.loads(compiled_sol['contracts']['swapEthToLtc.sol']['swapEthToLtc']['metadata'])['output']['abi']
 
 XChainSwap = w3.eth.contract(abi=abi, bytecode=bytecode)
 
