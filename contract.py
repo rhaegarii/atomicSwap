@@ -10,26 +10,51 @@ from solc import compile_standard
 compiled_sol = compile_standard({
      "language": "Solidity",
      "sources": {
-         "XChainSwap.sol": {
+         "swapEthToLtc.sol": {
              "content": '''
                  pragma solidity ^0.5.0;
 
-                 contract XChainSwap {
-                   string public greeting;
-                   string private secret;
-                   string public expiration;
-                   string public sendAddr;
-                   string public recvAddr;
+                 contract swapEthToLtc{
 
-                   constructor() public {
+                 string public greeting;
+
+
+                 struct Exchange {
+
+                   uint256 tradeValue;
+                   address ethSender;
+                   address ethReceiver;
+                   address ethContractAddress;
+                   address ltcSender;
+                   address ltcReceiver;
+                   string private secret;
+                   string public expiration1;
+                   string public expiration2;
+                   }
+
+                   enum States {
+                        INVALID,
+                        OPEN,
+                        CLOSED,
+                        EXPIRED
+                    }
+
+                 mapping (bytes32 => Exchange) private exchanges;
+                 mapping (bytes32 => States) private exchangeStates;
+
+                 event ContractOpen(bytes32 _swapID, address _otherTrader);
+                 event ContractExpire(bytes32 _swapID);
+                 event ContractClose(bytes32 _swapID);
+
+                 constructor() public {
                        greeting = 'Hello';
                    }
 
-                   function setGreeting(string memory _greeting) public {
+                 function setGreeting(string memory _greeting) public {
                        greeting = _greeting;
                    }
 
-                   function greet() view public returns (string memory) {
+                 function greet() view public returns (string memory) {
                        return greeting;
                    }
 
