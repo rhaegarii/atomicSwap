@@ -1,7 +1,7 @@
 #code from: https://web3py.readthedocs.io/en/stable/contracts.html#contracts
 
 #Step1: A creates her public and secret keys for each coin, sends public
-#Step2: B accepts contracts, does the same thing
+#Step2: B accepts proposal, does the same thing
 #Step3: A creates multisig wallet with each public key being in control and sends address to B
 #Step4: A creates tx1 = Refund(A, pkAa) tx2 = Swap(A, pkAb)
 #Step5: B verifies and finds (sig1, tx1) where sig1 = Sign(skAb(tx1)) and sends that plus makes the contract
@@ -34,7 +34,7 @@ compiled_sol = compile_standard({
 
                  struct Exchange {
 
-                   uint256 tradeValue;
+                   uint256 value;
                    uint256 ltcValue;
 
                    address ethSender;
@@ -65,6 +65,7 @@ compiled_sol = compile_standard({
 
                  constructor() public {
                        greeting = 'Hello';
+
                    }
 
                  modifier onlyInvalidExchanges(bytes32 _swapID) {
@@ -80,7 +81,7 @@ compiled_sol = compile_standard({
                  function open(bytes32 _swapID, uint256 _ltcValue, address _ethReceiver, address _ltcMultiSigAddr) public onlyInvalidExchanges(_swapID) payable {
                     // Store the details of the swap.
                     Exchange memory exchange = Exchange({
-                      tradeValue: msg.value,
+                      value: msg.value,
                       ltcValue: _ltcValue,
 
                       ethSender: msg.sender,
@@ -102,6 +103,8 @@ compiled_sol = compile_standard({
                         bytes32 check = keccak256(abi.encodePacked(message));
                         return ((ecrecover(hash, v, r, s) == p) && (check == hash)) ;
                     }
+
+                  function refundEth(address ethSender)
 
                  }
                '''
@@ -139,12 +142,13 @@ tx_hash = XChainSwap.constructor().transact()
 
 # Wait for the transaction to be mined, and get the transaction receipt
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-
+print(tx_receipt)
 #finds transaction on blockchain
 swapper = w3.eth.contract(
      address=tx_receipt.contractAddress,
      abi=abi
  )
+print(swapper)
 
 #swapper.functions.greet().call()
 #output: 'Hello'
