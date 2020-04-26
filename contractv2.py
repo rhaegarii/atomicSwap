@@ -239,7 +239,7 @@ print((wal3.addresslist()))
 #print(w2.address)
 
 #initialize trasaction on wallet 1
-#w1.utxos_update()
+w1.utxos_update()
 tswap = w1.send_to(wal3.addresslist()[0], 2, network=NETWORK)
 treturn = w1.send_to(wal4.addresslist()[0], 2, network=NETWORK)
 
@@ -279,7 +279,7 @@ XChainSwap = w3.eth.contract(abi=abi, bytecode=bytecode)
 # Submit the transaction that deploys the contract
 tx_hash = XChainSwap.constructor().transact()
 print(t2)
-#XChainSwap.functions.open((0).to_bytes(32, 'big'), 10, (ethReceiver.address), "0x"+(wal3.addresslist()[0]), "0x"+(w1.addresslist()[0]), (tswap.hash).encode('utf-8'), (treturn.hash).encode('utf-8'))
+XChainSwap.functions.open((0).to_bytes(32, 'big'), 10, (ethReceiver.address), "0x"+(wal3.addresslist()[0]), "0x"+(w1.addresslist()[0]), (tswap.hash).encode('utf-8'), (treturn.hash).encode('utf-8')).send()
 
 # Wait for the transaction to be mined, and get the transaction receipt
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
@@ -290,13 +290,29 @@ swapper = w3.eth.contract(
      abi=abi
  )
 
- #Event 1: Owner of chain currency signs swap transactions and sends to other party
-tswap = w2.send_to(wal3.addresslist()[0], 2, network=NETWORK)
+ #Event 1: Owner of chain currency signs swap transaction and sends to other party
+tswapinit = w2.send_to(wal3.addresslist()[0], 2, network=NETWORK)
+
+#multisig party creates signature for transaction but doesn't sign it yet
+w1.get_key()
+tswap = w1.transaction_import(tswapinit)
+#t2.sign()
+#print(t2.sign())
+#t2.send()
 
 
- #Event 2: Owner of multisig chain also signs transaction and sends to the smart contracts
-XChainSwap.functions.swap((0).to_bytes(32, 'big'), tswap.rawtx, tswap.hash, tswap.signature_segwit,  tswap.signature()[0:round(len(tswap.signature())/2)], tswap.signature()[round(len(tswap.signature())/2):], tswap.rawtx)
+ #Event 2: Owner of multisig chain sends signature to the smart contracts as well as other party. Signature is verified by the contract, setting status to "unlock"
+XChainSwap.functions.swap((0).to_bytes(32, 'big'), tswap.rawtx, tswap.hash, tswap.signature_segwit,  tswap.signature()[0:round(len(tswap.signature())/2)], tswap.signature()[round(len(tswap.signature())/2):], tswap.rawtx).send()
 
+
+#Event 3: Owner of contract chain uses the recently acquired signature to sign the transaction and retrieve the multisig funds
+tswap.sign()
+tswap.send()
+tswap.info()
+#They now have control of the currency they chose to swap for
+
+#Owner of multisg chain now queries the SC and retrieves their currency, completing the swap
+XChainSwap.functions.fundReceiver(0).send()
 
 #print(swapper)
 
