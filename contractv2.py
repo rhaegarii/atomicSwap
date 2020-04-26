@@ -34,6 +34,9 @@ import json
 from web3 import Web3
 
 from solc import compile_standard
+from bitcoinlib.keys import HDKey
+from bitcoinlib.wallets import HDWallet
+
 
 # Solidity source code
 compiled_sol = compile_standard({
@@ -47,15 +50,15 @@ compiled_sol = compile_standard({
 
                  string public greeting;
 
-                 
+
 
                  struct Exchange {
 
                    uint256 value;
                    uint256 ltcValue;
 
-                   address ethSender;
-                   address ethReceiver;
+                   address payable ethSender;
+                   address payable ethReceiver;
 
                    address ltcSender;
                    //address ltcReceiver;
@@ -64,8 +67,8 @@ compiled_sol = compile_standard({
 
 
 
-                   uint T
-                   uint T2
+                   uint T;
+                   uint T2;
                    bytes32 swapTHash;
                    bytes32 refundTHash;
 
@@ -104,7 +107,7 @@ compiled_sol = compile_standard({
                     _;
                  }
                  //called by B to initiate contract
-                 function open(bytes32 _swapID, uint256 _ltcValue, address _ethReceiver, address _ltcMultiSigAddr, address oSender, bytes32 sHash, bytes32 rHash) public onlyInvalidExchanges(_swapID) payable {
+                 function open(bytes32 _swapID, uint256 _ltcValue, address payable _ethReceiver, address _ltcMultiSigAddr, address oSender, bytes32 sHash, bytes32 rHash) public onlyInvalidExchanges(_swapID) payable {
                     //if (exchangeStates[_swapID] == States.Open || exchangeStates[_swapID] == States.Invalid) {
                      //   return; //shouldnt open new id if this is the case right?
                     //}
@@ -139,9 +142,9 @@ compiled_sol = compile_standard({
 
 
                   //SC1
-                  function nullify(bytes32 sId) {
-                      if (exchanges[sId].T < now && exchanges[sId].unlock == false) { //FIND OUT HOW TO GET CURRTIME
-                          sendEth(sId, thisExchange.ethSender);   
+                  function nullify(bytes32 sId) public  {
+                      if (exchanges[sId].T < now && exchanges[sId].unlock == false) {
+                          sendEth(sId, exchanges[sId].ethSender);
                       }
                   }
 
@@ -149,8 +152,8 @@ compiled_sol = compile_standard({
                   //SC2
                   //called by A  or B to refund B
                   //takes in signature for tx1
-                  function cancel(bytes32 sId, address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public view returns(bool) {
-                      thisExchange = exchanges[sId];
+                 function cancel(bytes32 sId, address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public payable returns(bool) {
+                      Exchange memory thisExchange = exchanges[sId];
 
                       if (hash == thisExchange.refundTHash && verify(p, hash, v, r, s, message)) {//we need to verify the transaction signature matches the refund transaction
                          sendEth(sId, thisExchange.ethSender); //we refund B
@@ -164,7 +167,7 @@ compiled_sol = compile_standard({
                   //called by A to enable swap
                   //takes in signature for tx2
                   function swap(bytes32 sId, address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public view returns(bool) {
-                      thisExchange = exchanges[sId];
+                      Exchange memory thisExchange = exchanges[sId];
 
                       if (hash == thisExchange.swapTHash && verify(p, hash, v, r, s, message)) {//we need to verify the transaction signature matches the send transaction
                          //should we also broadcast the transaction ann
@@ -173,10 +176,10 @@ compiled_sol = compile_standard({
                       }
                       return false;
                   }
-                 
+
 
                   //SC4
-                  function fundReceiver(bytes32 sId) {
+                  function fundReceiver(bytes32 sId) public {
                       if (exchanges[sId].T2 < now && exchanges[sId].unlock == true) {
                           sendEth(sId, exchanges[sId].ethReceiver);
                       }
@@ -194,7 +197,7 @@ compiled_sol = compile_standard({
                         return ((ecrecover(hash, v, r, s) == p) && (check == hash)) ;
                     }
 
-                  function sendEth(bytes32 sId, address recipient) {
+                  function sendEth(bytes32 sId, address payable recipient) public {
                       recipient.transfer(exchanges[sId].value);
                       exchangeStates[sId] = States.CLOSED;
                   }
@@ -215,6 +218,17 @@ compiled_sol = compile_standard({
              }
          }
  })
+
+NETWORK = 'testnet'
+k1 = HDKey('tprv8ZgxMBicQKsPd1Q44tfDiZC98iYouKRC2CzjT3HGt1yYw2zuX2awTotzGAZQEAU9bi2M5MCj8iedP9MREPjUgpDEBwBgGi2C8eK'
+           '5zNYeiX8', network=NETWORK)
+k2 = HDKey('tprv8ZgxMBicQKsPeUbMS6kswJc11zgVEXUnUZuGo3bF6bBrAg1ieFfUdPc9UHqbD5HcXizThrcKike1c4z6xHrz6MWGwy8L6YKVbgJ'
+           'MeQHdWDp', network=NETWORK)
+w1 = HDWallet.create('multisig_2of2_cosigner1', sigs_required=2,
+                     keys=[k1, k2.public_master(multisig=True)], network=NETWORK)
+w2 = HDWallet.create('multisig_2of2_cosigner2',  sigs_required=2,
+                     keys=[k1.public_master(multisig=True), k2], network=NETWORK)
+print("Deposit testnet bitcoin to this address to create transaction: ", w1.get_key().address)
 
 # web3.py instance
 w3 = Web3(Web3.EthereumTesterProvider())
