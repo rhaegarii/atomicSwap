@@ -58,7 +58,7 @@ compiled_sol = compile_standard({
                    address ethReceiver;
 
                    address ltcSender;
-                   address ltcReceiver;
+                   //address ltcReceiver;
 
                    address ltcMultiSigAddr;
 
@@ -66,8 +66,8 @@ compiled_sol = compile_standard({
 
                    uint T
                    uint T2
-                   string swapTransaction;
-                   string refundTransaction;
+                   bytes32 swapTHash;
+                   bytes32 refundTHash;
 
                    bool unlock;
 
@@ -104,7 +104,7 @@ compiled_sol = compile_standard({
                     _;
                  }
                  //called by B to initiate contract
-                 function open(bytes32 _swapID, uint256 _ltcValue, address _ethReceiver, address _ltcMultiSigAddr) public onlyInvalidExchanges(_swapID) payable {
+                 function open(bytes32 _swapID, uint256 _ltcValue, address _ethReceiver, address _ltcMultiSigAddr, address oSender, bytes32 sHash, bytes32 rHash) public onlyInvalidExchanges(_swapID) payable {
                     //if (exchangeStates[_swapID] == States.Open || exchangeStates[_swapID] == States.Invalid) {
                      //   return; //shouldnt open new id if this is the case right?
                     //}
@@ -118,9 +118,12 @@ compiled_sol = compile_standard({
                       ethReceiver: _ethReceiver,
 
                       unlock: false,
-                      T: now + (3600*10),//contract has designated time of 10 hours for initial swap and 10 more for confirmation -> due to bitcoins slow block output
-                      T2: now + (3600*20),
-                      ltcMultiSigAddr: _ltcMultiSigAddr
+                      T: now + (600),//contract has designated time of 10 hours for initial swap and 10 more for confirmation -> due to bitcoins slow block output
+                      T2: now + (2*600),
+                      ltcMultiSigAddr: _ltcMultiSigAddr,
+                      swapTHash: sHash,
+                      refundTHash: rHash,
+                      ltcSender: oSender
                     });
                     exchanges[_swapID] = exchange;
                     exchangeStates[_swapID] = States.OPEN;
@@ -138,21 +141,19 @@ compiled_sol = compile_standard({
                   //SC1
                   function nullify(bytes32 sId) {
                       if (exchanges[sId].T < now && exchanges[sId].unlock == false) { //FIND OUT HOW TO GET CURRTIME
-                          sendEth(thisExchange.ethSender);
-                          exchangesStates[sId] = States.Closed;
+                          sendEth(sId, thisExchange.ethSender);   
                       }
-
                   }
 
 
                   //SC2
                   //called by A  or B to refund B
                   //takes in signature for tx1
-                  function cancel(bytes32 sId, string tx1sig) public view returns(bool) {
+                  function cancel(bytes32 sId, address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public view returns(bool) {
                       thisExchange = exchanges[sId];
 
-                      if verify(thisExchange.refundTransaction, tx1sig, thisExchange.ltcSender) {//we need to verify the transaction signature matches the refund transaction
-                         sendEth(thisExchange.ethSender); //we refund B
+                      if (hash == thisExchange.refundTHash && verify(p, hash, v, r, s, message)) {//we need to verify the transaction signature matches the refund transaction
+                         sendEth(sId, thisExchange.ethSender); //we refund B
                          return true;
                       }
                       return false;
@@ -162,10 +163,10 @@ compiled_sol = compile_standard({
                   //SC3
                   //called by A to enable swap
                   //takes in signature for tx2
-                  function swap(bytes32 sId, string tx2sig) public view returns(bool) {
+                  function swap(bytes32 sId, address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public view returns(bool) {
                       thisExchange = exchanges[sId];
 
-                      if verify(thisExchange.refundTransaction, tx2sig, thisExchange.ltcSender) {//we need to verify the transaction signature matches the send transaction
+                      if (hash == thisExchange.swapTHash && verify(p, hash, v, r, s, message)) {//we need to verify the transaction signature matches the send transaction
                          //should we also broadcast the transaction ann
                          thisExchange.unlock = true;
                          return true;
@@ -177,9 +178,8 @@ compiled_sol = compile_standard({
                   //SC4
                   function fundReceiver(bytes32 sId) {
                       if (exchanges[sId].T2 < now && exchanges[sId].unlock == true) {
-                          sendEth(exchanges[sId].ethReceiver);
+                          sendEth(sId, exchanges[sId].ethReceiver);
                       }
-
                   }
 
 
@@ -194,8 +194,9 @@ compiled_sol = compile_standard({
                         return ((ecrecover(hash, v, r, s) == p) && (check == hash)) ;
                     }
 
-                  function sendEth(address recipient) {
-                  
+                  function sendEth(bytes32 sId, address recipient) {
+                      recipient.transfer(exchanges[sId].value);
+                      exchangeStates[sId] = States.CLOSED;
                   }
 
                  }
