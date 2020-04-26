@@ -60,10 +60,10 @@ compiled_sol = compile_standard({
                    address payable ethSender;
                    address payable ethReceiver;
 
-                   address ltcSender;
+                   string ltcSender;
                    //address ltcReceiver;
 
-                   address ltcMultiSigAddr;
+                   string ltcMultiSigAddr;
 
 
 
@@ -107,7 +107,7 @@ compiled_sol = compile_standard({
                     _;
                  }
                  //called by B to initiate contract
-                 function open(bytes32 _swapID, uint256 _ltcValue, address payable _ethReceiver, address _ltcMultiSigAddr, address oSender, bytes32 sHash, bytes32 rHash) public onlyInvalidExchanges(_swapID) payable {
+                 function open(bytes32 _swapID, uint256 _ltcValue, address payable _ethReceiver, string memory _ltcMultiSigAddr, string memory oSender, bytes32 sHash, bytes32 rHash) public onlyInvalidExchanges(_swapID) payable {
                     //if (exchangeStates[_swapID] == States.Open || exchangeStates[_swapID] == States.Invalid) {
                      //   return; //shouldnt open new id if this is the case
                     //}
@@ -193,7 +193,7 @@ compiled_sol = compile_standard({
                   //helpers (verify and sendeth)
                   function verify(address p, bytes32 hash, uint8 v, bytes32 r, bytes32 s, string memory message) public view returns(bool)  {
 
-                        bytes32 check = keccak256(abi.encodePacked(message));
+                        bytes32 check = sha256(abi.encodePacked(p));
                         return ((ecrecover(hash, v, r, s) == p) && (check == hash)) ;
                     }
 
@@ -234,18 +234,21 @@ NETWORK = 'testnet'
 w1 = wallet_create_or_open('multisig_2of2_cosigner1')
 w2 = wallet_create_or_open('multisig_2of2_cosigner2')
 wal3 = wallet_create_or_open('rcvr', network=NETWORK)
-print((w3.addresslist()))
+wal4 = wallet_create_or_open('sndr', network=NETWORK)
+print((wal3.addresslist()))
 #print(w2.address)
 
 #initialize trasaction on wallet 1
 #w1.utxos_update()
-t = w1.send_to(wal3.addresslist()[0], 2, network=NETWORK)
+tswap = w1.send_to(wal3.addresslist()[0], 2, network=NETWORK)
+treturn = w1.send_to(wal4.addresslist()[0], 2, network=NETWORK)
 
-t.info()
+tswap.info()
+treturn.info()
 
 #sign and sent transaction on wallet 2
 w2.get_key()
-t2 = w2.transaction_import(t)
+t2 = w2.transaction_import(tswap)
 #t2.sign()
 #print(t2.sign())
 #t2.send()
@@ -259,7 +262,7 @@ w3 = Web3(Web3.EthereumTesterProvider())
 # set pre-funded account as sender
 w3.eth.defaultAccount = w3.eth.accounts[0]
 ethReceiver = w3.eth.account.create();
-print(dir(ethReceiver))
+
 
 # get bytecode
 bytecode = compiled_sol['contracts']['swapEthToLtc.sol']['swapEthToLtc']['evm']['bytecode']['object']
@@ -269,10 +272,14 @@ abi = json.loads(compiled_sol['contracts']['swapEthToLtc.sol']['swapEthToLtc']['
 
 XChainSwap = w3.eth.contract(abi=abi, bytecode=bytecode)
 
+
+
+
+
 # Submit the transaction that deploys the contract
 tx_hash = XChainSwap.constructor().transact()
-
-XChainSwap.functions.open(0, 10, ethReceiver.address, wal3.addresslist()[0], w1.addresslist()[0], )
+print(t2)
+#XChainSwap.functions.open((0).to_bytes(32, 'big'), 10, (ethReceiver.address), "0x"+(wal3.addresslist()[0]), "0x"+(w1.addresslist()[0]), (tswap.hash).encode('utf-8'), (treturn.hash).encode('utf-8'))
 
 # Wait for the transaction to be mined, and get the transaction receipt
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
@@ -282,6 +289,15 @@ swapper = w3.eth.contract(
      address=tx_receipt.contractAddress,
      abi=abi
  )
+
+ #Event 1: Owner of chain currency signs swap transactions and sends to other party
+tswap = w2.send_to(wal3.addresslist()[0], 2, network=NETWORK)
+
+
+ #Event 2: Owner of multisig chain also signs transaction and sends to the smart contracts
+XChainSwap.functions.swap((0).to_bytes(32, 'big'), tswap.rawtx, tswap.hash, tswap.signature_segwit,  tswap.signature()[0:round(len(tswap.signature())/2)], tswap.signature()[round(len(tswap.signature())/2):], tswap.rawtx)
+
+
 #print(swapper)
 
 #swapper.functions.greet().call()
