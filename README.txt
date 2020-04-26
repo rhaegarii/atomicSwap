@@ -1,1 +1,1 @@
-#inital readme commit
+This is our CS6260 Final Project
