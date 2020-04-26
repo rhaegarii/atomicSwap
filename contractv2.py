@@ -35,7 +35,7 @@ from web3 import Web3
 
 from solc import compile_standard
 from bitcoinlib.keys import HDKey
-from bitcoinlib.wallets import HDWallet
+from bitcoinlib.wallets import HDWallet, wallet_create_or_open
 
 
 # Solidity source code
@@ -109,7 +109,7 @@ compiled_sol = compile_standard({
                  //called by B to initiate contract
                  function open(bytes32 _swapID, uint256 _ltcValue, address payable _ethReceiver, address _ltcMultiSigAddr, address oSender, bytes32 sHash, bytes32 rHash) public onlyInvalidExchanges(_swapID) payable {
                     //if (exchangeStates[_swapID] == States.Open || exchangeStates[_swapID] == States.Invalid) {
-                     //   return; //shouldnt open new id if this is the case right?
+                     //   return; //shouldnt open new id if this is the case
                     //}
 
                     // Store the details of the swap.
@@ -219,22 +219,47 @@ compiled_sol = compile_standard({
          }
  })
 
+#Code used to initialize wallets, which are now used in each running of the script
 NETWORK = 'testnet'
-k1 = HDKey('tprv8ZgxMBicQKsPd1Q44tfDiZC98iYouKRC2CzjT3HGt1yYw2zuX2awTotzGAZQEAU9bi2M5MCj8iedP9MREPjUgpDEBwBgGi2C8eK'
-           '5zNYeiX8', network=NETWORK)
-k2 = HDKey('tprv8ZgxMBicQKsPeUbMS6kswJc11zgVEXUnUZuGo3bF6bBrAg1ieFfUdPc9UHqbD5HcXizThrcKike1c4z6xHrz6MWGwy8L6YKVbgJ'
-           'MeQHdWDp', network=NETWORK)
-w1 = HDWallet.create('multisig_2of2_cosigner1', sigs_required=2,
-                     keys=[k1, k2.public_master(multisig=True)], network=NETWORK)
-w2 = HDWallet.create('multisig_2of2_cosigner2',  sigs_required=2,
-                     keys=[k1.public_master(multisig=True), k2], network=NETWORK)
-print("Deposit testnet bitcoin to this address to create transaction: ", w1.get_key().address)
+#k1 = HDKey('tprv8ZgxMBicQKsPd1Q44tfDiZC98iYouKRC2CzjT3HGt1yYw2zuX2awTotzGAZQEAU9bi2M5MCj8iedP9MREPjUgpDEBwBgGi2C8eK'
+#           '5zNYeiX8', network=NETWORK)
+#k2 = HDKey('tprv8ZgxMBicQKsPeUbMS6kswJc11zgVEXUnUZuGo3bF6bBrAg1ieFfUdPc9UHqbD5HcXizThrcKike1c4z6xHrz6MWGwy8L6YKVbgJ'
+#           'MeQHdWDp', network=NETWORK)
+
+
+#w1 = HDWallet.create('multisig_2of2_cosigner1', sigs_required=2, keys=[k1, k2.public_master(multisig=True)], network=NETWORK)
+#w2 = HDWallet.create('multisig_2of2_cosigner2',  sigs_required=2, keys=[k1.public_master(multisig=True), k2], network=NETWORK)
+
+#open multisig wallet M
+w1 = wallet_create_or_open('multisig_2of2_cosigner1')
+w2 = wallet_create_or_open('multisig_2of2_cosigner2')
+wal3 = wallet_create_or_open('rcvr', network=NETWORK)
+print((w3.addresslist()))
+#print(w2.address)
+
+#initialize trasaction on wallet 1
+#w1.utxos_update()
+t = w1.send_to(wal3.addresslist()[0], 2, network=NETWORK)
+
+t.info()
+
+#sign and sent transaction on wallet 2
+w2.get_key()
+t2 = w2.transaction_import(t)
+#t2.sign()
+#print(t2.sign())
+#t2.send()
+t2.info()
+
+print(dir(t2))
 
 # web3.py instance
 w3 = Web3(Web3.EthereumTesterProvider())
 
 # set pre-funded account as sender
 w3.eth.defaultAccount = w3.eth.accounts[0]
+ethReceiver = w3.eth.account.create();
+print(dir(ethReceiver))
 
 # get bytecode
 bytecode = compiled_sol['contracts']['swapEthToLtc.sol']['swapEthToLtc']['evm']['bytecode']['object']
@@ -247,15 +272,17 @@ XChainSwap = w3.eth.contract(abi=abi, bytecode=bytecode)
 # Submit the transaction that deploys the contract
 tx_hash = XChainSwap.constructor().transact()
 
+XChainSwap.functions.open(0, 10, ethReceiver.address, wal3.addresslist()[0], w1.addresslist()[0], )
+
 # Wait for the transaction to be mined, and get the transaction receipt
 tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash)
-print(tx_receipt)
+#print(tx_receipt)
 #finds transaction on blockchain
 swapper = w3.eth.contract(
      address=tx_receipt.contractAddress,
      abi=abi
  )
-print(swapper)
+#print(swapper)
 
 #swapper.functions.greet().call()
 #output: 'Hello'
